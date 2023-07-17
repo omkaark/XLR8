@@ -1,56 +1,28 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "./App.css";
-
-const renderTable = (json, key) => {
-  if (!json) return <></>;
-  json = JSON.parse(json);
-  const columns = Object.keys(json);
-
-  // Find the maximum number of rows
-  const maxRows = Object.values(json).reduce(
-    (max, columnData) => Math.max(max, Object.keys(columnData).length),
-    0
-  );
-
-  return (
-    <table
-      key={key}
-      style={{ borderCollapse: "collapse", width: "min-content" }}
-    >
-      <thead>
-        <tr>
-          {columns.map((column) => (
-            <th
-              key={column}
-              style={{ border: "1px solid black", padding: "8px" }}
-            >
-              {column}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {Array.from({ length: maxRows }, (_, rowIndex) => (
-          <tr key={rowIndex}>
-            {columns.map((column) => (
-              <td
-                key={column}
-                style={{ border: "1px solid black", padding: "8px" }}
-              >
-                {json[column][rowIndex] || ""}
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-};
+import DataPreview from "./components/DataPreview";
+import FlowStep from "./components/FlowStep";
 
 const App = () => {
-  const [flows, setFlows] = useState([]);
-  const [initialHead, setInitialHead] = useState("");
-  const [responses, setResponses] = useState([]);
+  const [flowList, setFlowList] = useState([]);
+  const [initialPreview, setInitialPreview] = useState("");
+  const [previewList, setPreviewList] = useState([]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("demo") == "henry") {
+      console.log("Demo for henry");
+      const flows = [
+        "Split name by ,",
+        `Add a column called "Entry_IDs" which contains "True" and "False" values. It will be True if ID the first three numbers of ID is less than 500`,
+        "Delete name column",
+        "Rearrange First name to be first and last name to be second amongst all columns",
+        `Place column is in the "City, Street" format convert it to a "Street, City" format`,
+      ];
+      setFlowList(flows);
+      setPreviewList(flows.map(() => ""));
+    }
+  }, []);
 
   const handleUpload = async (e) => {
     try {
@@ -58,11 +30,9 @@ const App = () => {
       const reader = new FileReader();
       reader.onload = async (event) => {
         const fileContent = event.target.result;
-
         const contentObject = {
           content: fileContent,
         };
-
         const response = await fetch("http://127.0.0.1:5000/api/file_upload", {
           method: "POST",
           headers: {
@@ -70,82 +40,82 @@ const App = () => {
           },
           body: JSON.stringify(contentObject),
         });
-
         if (!response.ok) {
           throw new Error("Failed to upload file");
         }
-
         const data = await response.json();
-        setInitialHead(data.head);
+        setInitialPreview(data.preview);
       };
-
       reader.readAsText(file);
     } catch (error) {
       console.error("Error:", error);
-      // Handle error as needed
     }
   };
 
   const addFlow = () => {
-    setFlows([...flows, ""]);
+    if (
+      (flowList.slice(-1) == "" || previewList.slice(-1) == "") &&
+      flowList.length != 0
+    )
+      return; // Last flow and preview are not set
+    setFlowList([...flowList, ""]);
+    setPreviewList([...previewList, ""]);
   };
 
-  const handleInputChange = (e, index) => {
-    const updatedFlows = [...flows];
-    updatedFlows[index] = e.target.value;
-    setFlows(updatedFlows);
-  };
-
-  const handleTest = async (prompt) => {
-    // Make your API call here and store the response
-    const response = await fetch(`http://127.0.0.1:5000/api/manipulate`, {
-      method: "POST",
+  const downloadFinalCsv = async () => {
+    const response = await fetch("http://127.0.0.1:5000/api/file_download", {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        prompt,
-      }),
     });
     const data = await response.json();
-    const head = data.head;
-    if (responses.length === flows.length) {
-      setResponses((r) => {
-        r[r.length - 1] = head;
-        return r;
-      });
-      setFlows([...flows]);
-    } else {
-      setResponses((r) => [...r, head]);
-    }
-    console.log(responses);
+    const fileContents = data.contents;
+
+    // Create a Blob object from the CSV string
+    const blob = new Blob([fileContents], { type: "text/csv" });
+
+    // Create a temporary anchor element
+    const anchor = document.createElement("a");
+
+    // Set the anchor's href attribute to the URL of the Blob
+    anchor.href = URL.createObjectURL(blob);
+
+    // Set the anchor's download attribute to specify the file name
+    anchor.download = "data.csv";
+
+    // Programmatically click the anchor element to trigger the download
+    anchor.click();
+
+    // Clean up by revoking the Object URL
+    URL.revokeObjectURL(anchor.href);
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "50px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
       <input type="file" onChange={handleUpload} />
-      {renderTable(initialHead)}
 
-      {flows.map((flow, index) => (
-        <div key={index}>
-          <input
-            type="text"
-            value={flow}
-            style={{ width: "500px" }}
-            onChange={(e) => handleInputChange(e, index)}
-          />
-          <button onClick={() => handleTest(flows[flows.length - 1])}>
-            Test Step {index + 1}
-          </button>
-          <div style={{ marginTop: "5px" }}>
-            {renderTable(responses[index], index)}
-          </div>
-        </div>
+      <DataPreview jsonString={initialPreview} />
+
+      {flowList.map((_, idx) => (
+        <FlowStep
+          key={idx}
+          flowList={flowList}
+          previewList={previewList}
+          setFlowList={setFlowList}
+          setPreviewList={setPreviewList}
+          step={idx}
+        />
       ))}
 
-      {initialHead && (
+      {initialPreview && (
         <button onClick={addFlow} style={{ maxWidth: "100px" }}>
           Add Flow
+        </button>
+      )}
+
+      {initialPreview && (
+        <button onClick={downloadFinalCsv} style={{ maxWidth: "100px" }}>
+          Download Final CSV
         </button>
       )}
     </div>
