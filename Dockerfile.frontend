@@ -1,0 +1,18 @@
+# Use the official Node.js image as the base image
+FROM node:16-alpine
+
+# Set the working directory within the container
+WORKDIR /app
+
+# Copy package.json and package-lock.json into the container and install dependencies
+COPY frontend/package*.json ./
+RUN npm ci
+
+# Copy the rest of the frontend files into the container
+COPY frontend/ .
+
+# Expose the port on which the Vite React app will run
+EXPOSE 3000
+
+# Command to run the Vite React app
+CMD ["npm", "run", "dev"]
