@@ -1,12 +1,13 @@
-name: Build and push containers to ECR
+name: Build and Deploy
 
 on:
   push:
     branches:
-      - nothing
+      - main
 
 jobs:
-  deploy:
+  push-to-ecr:
+    name: Build and push to ECR
     runs-on: ubuntu-latest
 
     steps:
@@ -24,20 +25,61 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build and push backend container
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: xlr8-backend
-          IMAGE_TAG: backend
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG  -f Dockerfile.backend .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+      # - name: Build and push backend container
+      #   env:
+      #     ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      #     ECR_REPOSITORY: xlr8-backend
+      #     IMAGE_TAG: ${{ github.sha }}
+      #   run: |
+      #     docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG  -f Dockerfile.backend .
+      #     docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+      #     echo "be_image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Build and push frontend container
+      # - name: Build and push frontend container
+      #   id: build-frontend
+      #   env:
+      #     ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      #     ECR_REPOSITORY: xlr8-frontend
+      #     IMAGE_TAG: ${{ github.sha }}
+      #   run: |
+      #     docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG  -f Dockerfile.frontend .
+      #     docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+      #     echo "fe_image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Add new backend image ID in the Amazon ECS task definition
+        id: backend-task
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: .aws/backend-task-def.json
+          container-name: xlr8-backend
+          image: 363187237379.dkr.ecr.us-east-1.amazonaws.com/xlr8-backend:latest # ${{ steps.build-backend.outputs.image }}
+
+      - name: Add new frontend image ID in the Amazon ECS task definition
+        id: frontend-task
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: .aws/frontend-task-def.json
+          container-name: xlr8-frontend
+          image: 363187237379.dkr.ecr.us-east-1.amazonaws.com/xlr8-backend:latest # ${{ steps.build-frontend.outputs.image }}
+
+      - name: Deploy Amazon ECS backend task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: xlr8-frontend
-          IMAGE_TAG: frontend
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG  -f Dockerfile.frontend .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          ECS_CLUSTER: XLR8
+          ECS_SERVICE: xlr8-backend
+        with:
+          task-definition: ${{ steps.backend-task.outputs.task-definition }}
+          service: xlr8-backend
+          cluster: XLR8
+          wait-for-service-stability: true
+
+      - name: Deploy Amazon ECS frontend task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        env:
+          ECS_CLUSTER: XLR8
+          ECS_SERVICE: xlr8-frontend
+        with:
+          task-definition: ${{ steps.frontend-task.outputs.task-definition }}
+          service: xlr8-frontend
+          cluster: XLR8
+          wait-for-service-stability: true
