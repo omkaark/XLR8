@@ -26,7 +26,7 @@ def make_openai_query(prompt):
     response = openai.Completion.create(
         engine="text-davinci-003",
         prompt="""
-        Only output python3. Do not write any text to explain. 
+        only output python3. Do not write any text to explain. 
         I should be directly able to execute your output on my computer using python's exec method, so make sure it is safe. 
         Below, I provide the Columns of data and user's prompt. 
         Convert that prompt to pandas code. Call the dataframe variable object "dataframe". 
@@ -123,4 +123,4 @@ def manipulate():
     return jsonify(response)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5000, host="0.0.0.0")
